@@ -178,6 +178,8 @@ h1 {
   color: var(--ink);
   font-size: 2.35rem;
   font-weight: 800;
+  line-height: 1;
+  overflow: hidden;
 }
 
 .cell:hover,
@@ -246,15 +248,31 @@ h1 {
 
 .notes {
   display: grid;
-  width: 74%;
-  height: 74%;
+  width: 100%;
+  height: 100%;
+  padding: 8%;
   grid-template-columns: repeat(var(--note-cols), minmax(0, 1fr));
   grid-template-rows: repeat(var(--note-rows), minmax(0, 1fr));
   align-items: center;
   justify-items: center;
+  gap: 1px;
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
+  line-height: 1;
+  pointer-events: none;
+  text-align: center;
+}
+
+.notes span {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  line-height: 1;
+  overflow: hidden;
 }
 
 .sudoku-board[data-side="6"] .cell {
@@ -463,7 +481,9 @@ h1 {
 }
 
 .sudoku-board[data-side="16"] .notes {
-  font-size: 0.28rem;
+  padding: 4%;
+  gap: 0;
+  font-size: 5px;
   font-weight: 700;
 }
 
@@ -481,7 +501,8 @@ h1 {
   }
 
   .sudoku-board[data-side="16"] .notes {
-    font-size: 0.18rem;
+    padding: 2%;
+    font-size: 3px;
   }
 }
 

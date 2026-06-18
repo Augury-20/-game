@@ -15,6 +15,8 @@ const SIZE_CONFIGS = [
     },
     unique: true,
     maxAttempts: 60,
+    solutionCheckNodeLimit: Infinity,
+    generationBudgetMs: 500,
   },
   {
     id: "9x9",
@@ -30,6 +32,8 @@ const SIZE_CONFIGS = [
     },
     unique: true,
     maxAttempts: 12,
+    solutionCheckNodeLimit: 250000,
+    generationBudgetMs: 1000,
   },
   {
     id: "16x16",
@@ -43,8 +47,10 @@ const SIZE_CONFIGS = [
       normal: 176,
       hard: 160,
     },
-    unique: false,
+    unique: true,
     maxAttempts: 1,
+    solutionCheckNodeLimit: 180000,
+    generationBudgetMs: 1600,
   },
 ];
 
@@ -139,9 +145,7 @@ function generatePuzzle(config, difficulty) {
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const solution = makeSolvedBoard(config);
-    const puzzle = config.unique === false
-      ? digPuzzleFast(solution, targetGivens)
-      : digPuzzle(solution, config, targetGivens);
+    const puzzle = digPuzzle(solution, config, targetGivens);
     const givenCount = puzzle.filter(Boolean).length;
 
     if (givenCount === targetGivens) {
@@ -192,16 +196,17 @@ function digPuzzle(solution, config, targetGivens) {
   const puzzle = solution.slice();
   const positions = shuffle(range(solution.length));
   let givenCount = puzzle.length;
+  const deadline = Date.now() + (config.generationBudgetMs ?? Infinity);
 
   for (const index of positions) {
-    if (givenCount <= targetGivens) {
+    if (givenCount <= targetGivens || Date.now() > deadline) {
       break;
     }
 
     const saved = puzzle[index];
     puzzle[index] = "";
 
-    if (countSolutions(puzzle, config, 2) !== 1) {
+    if (countSolutions(puzzle, config, 2, config.solutionCheckNodeLimit) !== 1) {
       puzzle[index] = saved;
     } else {
       givenCount -= 1;
@@ -211,29 +216,21 @@ function digPuzzle(solution, config, targetGivens) {
   return puzzle;
 }
 
-function digPuzzleFast(solution, targetGivens) {
-  const puzzle = solution.slice();
-  const removableCount = Math.max(0, puzzle.length - targetGivens);
-  const positions = shuffle(range(solution.length)).slice(0, removableCount);
-
-  positions.forEach((index) => {
-    puzzle[index] = "";
-  });
-
-  return puzzle;
-}
-
-function countSolutions(startBoard, config, limit) {
+function countSolutions(startBoard, config, limit, nodeLimit = Infinity) {
   const side = config.symbols.length;
-  const board = startBoard.slice();
-  const rows = Array.from({ length: side }, () => new Set());
-  const cols = Array.from({ length: side }, () => new Set());
-  const boxes = Array.from({ length: side }, () => new Set());
+  const fullMask = (1 << side) - 1;
+  const symbolBits = new Map(config.symbols.map((symbol, index) => [symbol, 1 << index]));
+  const board = startBoard.map((value) => value ? symbolBits.get(value) : 0);
+  const rows = Array.from({ length: side }, () => 0);
+  const cols = Array.from({ length: side }, () => 0);
+  const boxes = Array.from({ length: side }, () => 0);
   let solutions = 0;
+  let searchedNodes = 0;
+  let aborted = false;
 
   for (let index = 0; index < board.length; index += 1) {
-    const value = board[index];
-    if (!value) {
+    const bit = board[index];
+    if (!bit) {
       continue;
     }
 
@@ -241,40 +238,53 @@ function countSolutions(startBoard, config, limit) {
     const col = index % side;
     const box = boxIndex(row, col, config);
 
-    if (rows[row].has(value) || cols[col].has(value) || boxes[box].has(value)) {
+    if ((rows[row] & bit) || (cols[col] & bit) || (boxes[box] & bit)) {
       return 0;
     }
 
-    rows[row].add(value);
-    cols[col].add(value);
-    boxes[box].add(value);
+    rows[row] |= bit;
+    cols[col] |= bit;
+    boxes[box] |= bit;
   }
 
   solve();
-  return solutions;
+  return aborted ? -1 : solutions;
 
   function solve() {
-    if (solutions >= limit) {
+    if (solutions >= limit || aborted) {
+      return;
+    }
+
+    searchedNodes += 1;
+    if (searchedNodes > nodeLimit) {
+      aborted = true;
       return;
     }
 
     let targetIndex = -1;
-    let targetCandidates = null;
+    let targetMask = 0;
+    let targetCount = side + 1;
 
     for (let index = 0; index < board.length; index += 1) {
       if (board[index]) {
         continue;
       }
 
-      const candidates = getCandidates(index);
+      const mask = getCandidateMask(index);
+      const candidateCount = bitCount(mask);
 
-      if (candidates.length === 0) {
+      if (candidateCount === 0) {
         return;
       }
 
-      if (!targetCandidates || candidates.length < targetCandidates.length) {
+      if (candidateCount < targetCount) {
         targetIndex = index;
-        targetCandidates = candidates;
+        targetMask = mask;
+        targetCount = candidateCount;
+
+        if (candidateCount === 1) {
+          break;
+        }
       }
     }
 
@@ -286,34 +296,36 @@ function countSolutions(startBoard, config, limit) {
     const row = Math.floor(targetIndex / side);
     const col = targetIndex % side;
     const box = boxIndex(row, col, config);
+    let candidates = targetMask;
 
-    for (const value of targetCandidates) {
-      board[targetIndex] = value;
-      rows[row].add(value);
-      cols[col].add(value);
-      boxes[box].add(value);
+    while (candidates) {
+      const bit = candidates & -candidates;
+      candidates -= bit;
+
+      board[targetIndex] = bit;
+      rows[row] |= bit;
+      cols[col] |= bit;
+      boxes[box] |= bit;
 
       solve();
 
-      board[targetIndex] = "";
-      rows[row].delete(value);
-      cols[col].delete(value);
-      boxes[box].delete(value);
+      board[targetIndex] = 0;
+      rows[row] ^= bit;
+      cols[col] ^= bit;
+      boxes[box] ^= bit;
 
-      if (solutions >= limit) {
+      if (solutions >= limit || aborted) {
         return;
       }
     }
   }
 
-  function getCandidates(index) {
+  function getCandidateMask(index) {
     const row = Math.floor(index / side);
     const col = index % side;
     const box = boxIndex(row, col, config);
 
-    return config.symbols.filter((symbol) => (
-      !rows[row].has(symbol) && !cols[col].has(symbol) && !boxes[box].has(symbol)
-    ));
+    return fullMask & ~(rows[row] | cols[col] | boxes[box]);
   }
 }
 
@@ -728,6 +740,17 @@ function boxIndex(row, col, config) {
 
 function range(length) {
   return Array.from({ length }, (_, index) => index);
+}
+
+function bitCount(mask) {
+  let count = 0;
+
+  while (mask) {
+    mask &= mask - 1;
+    count += 1;
+  }
+
+  return count;
 }
 
 function shuffle(items) {
