@@ -69,6 +69,7 @@ const noteBtn = document.querySelector("#noteBtn");
 const eraseBtn = document.querySelector("#eraseBtn");
 const hintBtn = document.querySelector("#hintBtn");
 const checkBtn = document.querySelector("#checkBtn");
+const zoomBtn = document.querySelector("#zoomBtn");
 const messageEl = document.querySelector("#message");
 const timerEl = document.querySelector("#timer");
 const remainingEl = document.querySelector("#remaining");
@@ -79,6 +80,7 @@ const mobileMedia = window.matchMedia("(max-width: 760px)");
 
 let state = null;
 let timerId = null;
+let boardZoomed = false;
 
 init();
 
@@ -92,6 +94,7 @@ function init() {
   eraseBtn.addEventListener("click", eraseSelected);
   hintBtn.addEventListener("click", useHint);
   checkBtn.addEventListener("click", checkBoard);
+  zoomBtn.addEventListener("click", toggleBoardZoom);
   document.addEventListener("keydown", handleKeyboard);
   window.addEventListener("resize", handleDeviceChange);
 
@@ -148,6 +151,7 @@ function startGame() {
     checked: false,
     complete: false,
     hintsUsed: 0,
+    zoomed: boardZoomed,
     startedAt: Date.now(),
     finishedAt: null,
   };
@@ -369,8 +373,22 @@ function render() {
   renderBoard();
   renderKeypad();
   renderStats();
+  renderZoomControl();
   renderSelectedNotes();
   document.body.classList.toggle("is-complete", state.complete);
+}
+
+function renderZoomControl() {
+  if (!zoomBtn || !state) {
+    return;
+  }
+
+  const isZoomed = isBoardZoomed();
+  document.body.dataset.zoom = isZoomed ? "zoomed" : "fit";
+  boardEl.dataset.zoom = isZoomed ? "zoomed" : "fit";
+  zoomBtn.textContent = isZoomed ? "縮小" : "放大";
+  zoomBtn.setAttribute("aria-pressed", String(isZoomed));
+  zoomBtn.classList.toggle("active", isZoomed);
 }
 
 function renderBoard() {
@@ -462,7 +480,7 @@ function createNotes(index) {
   if (isLargeBoard()) {
     notes.classList.add("compact-notes");
 
-    if (isMobileLayout()) {
+    if (isMobileLayout() && !isBoardZoomed()) {
       notes.classList.add("note-count");
       notes.textContent = activeNotes.length ? String(activeNotes.length) : "";
       notes.setAttribute(
@@ -572,6 +590,10 @@ function isMobileLayout() {
   return document.body.dataset.device === "mobile";
 }
 
+function isBoardZoomed() {
+  return Boolean(state?.zoomed);
+}
+
 function isLargeBoard() {
   return state.config.symbols.length >= 16;
 }
@@ -634,6 +656,16 @@ function toggleNotes() {
   state.noteMode = !state.noteMode;
   noteBtn.setAttribute("aria-pressed", String(state.noteMode));
   noteBtn.classList.toggle("active", state.noteMode);
+}
+
+function toggleBoardZoom() {
+  if (!state) {
+    return;
+  }
+
+  boardZoomed = !boardZoomed;
+  state.zoomed = boardZoomed;
+  render();
 }
 
 function eraseSelected() {
