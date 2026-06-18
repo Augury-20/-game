@@ -75,7 +75,6 @@ const timerEl = document.querySelector("#timer");
 const remainingEl = document.querySelector("#remaining");
 const hintsEl = document.querySelector("#hints");
 const gameTitle = document.querySelector("#gameTitle");
-const selectedNotesEl = document.querySelector("#selectedNotes");
 const mobileMedia = window.matchMedia("(max-width: 760px)");
 
 let state = null;
@@ -374,7 +373,6 @@ function render() {
   renderKeypad();
   renderStats();
   renderZoomControl();
-  renderSelectedNotes();
   document.body.classList.toggle("is-complete", state.complete);
 }
 
@@ -480,16 +478,6 @@ function createNotes(index) {
   if (isLargeBoard()) {
     notes.classList.add("compact-notes");
 
-    if (isMobileLayout() && !isBoardZoomed()) {
-      notes.classList.add("note-count");
-      notes.textContent = activeNotes.length ? String(activeNotes.length) : "";
-      notes.setAttribute(
-        "aria-label",
-        activeNotes.length ? `筆記 ${activeNotes.join(" ")}` : "沒有筆記",
-      );
-      return notes;
-    }
-
     activeNotes.forEach((symbol) => {
       const note = document.createElement("span");
       note.textContent = symbol;
@@ -508,86 +496,8 @@ function createNotes(index) {
   return notes;
 }
 
-function renderSelectedNotes() {
-  if (!selectedNotesEl || !state) {
-    return;
-  }
-
-  if (!shouldShowSelectedNotes()) {
-    selectedNotesEl.hidden = true;
-    selectedNotesEl.innerHTML = "";
-    return;
-  }
-
-  const side = state.config.symbols.length;
-  const index = state.selectedIndex;
-  const row = Math.floor(index / side) + 1;
-  const col = (index % side) + 1;
-  const value = state.values[index];
-  const isLocked = state.puzzle[index] !== "" || Boolean(value) || state.complete;
-  const activeNotes = getActiveNotes(index);
-
-  selectedNotesEl.hidden = false;
-  selectedNotesEl.innerHTML = "";
-  selectedNotesEl.style.setProperty("--selected-note-cols", Math.ceil(Math.sqrt(side)));
-
-  const header = document.createElement("div");
-  header.className = "selected-notes-header";
-
-  const title = document.createElement("strong");
-  title.textContent = "選取格筆記";
-
-  const meta = document.createElement("span");
-  meta.textContent = value ? `第 ${row} 列 ${col} 欄：${value}` : `第 ${row} 列 ${col} 欄：${activeNotes.length}`;
-
-  header.append(title, meta);
-  selectedNotesEl.appendChild(header);
-
-  const grid = document.createElement("div");
-  grid.className = "selected-note-grid";
-
-  state.config.symbols.forEach((symbol) => {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "selected-note-chip";
-    chip.textContent = symbol;
-    chip.disabled = isLocked;
-    chip.setAttribute("aria-pressed", String(state.notes[index].has(symbol)));
-
-    if (state.notes[index].has(symbol)) {
-      chip.classList.add("active");
-    }
-
-    chip.addEventListener("click", () => {
-      if (chip.disabled) {
-        return;
-      }
-
-      if (!state.noteMode) {
-        state.noteMode = true;
-        noteBtn.setAttribute("aria-pressed", "true");
-        noteBtn.classList.add("active");
-      }
-
-      inputSymbol(symbol);
-    });
-
-    grid.appendChild(chip);
-  });
-
-  selectedNotesEl.appendChild(grid);
-}
-
-function shouldShowSelectedNotes() {
-  return isMobileLayout() || isLargeBoard();
-}
-
 function getActiveNotes(index) {
   return state.config.symbols.filter((symbol) => state.notes[index].has(symbol));
-}
-
-function isMobileLayout() {
-  return document.body.dataset.device === "mobile";
 }
 
 function isBoardZoomed() {
